@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <queue>
+#include <stdexcept>
 
 using namespace std;
 // CLASS: TimeSlot
@@ -335,6 +336,33 @@ public:
         return matched;
     }
 };
+//Custom Exceptions 
+class TutorNotFoundException {
+    string message;
+public:
+    TutorNotFoundException(string name) {
+        message = "Tutor not found: " + name;
+    }
+    string what() { return message; }
+};
+
+class StudentNotFoundException {
+    string message;
+public:
+    StudentNotFoundException(string name) {
+        message = "Student not found: " + name;
+    }
+    string what() { return message; }
+};
+
+class SlotNotFoundException {
+    string message;
+public:
+    SlotNotFoundException(int id) {
+        message = "Slot ID not found: " + to_string(id);
+    }
+    string what() { return message; }
+};
 // CLASS: Platform (Main)
 class Platform {
 private:
@@ -423,6 +451,7 @@ public:
     }
 
     void bookSession(string tutorName, string studentName, string subject, int slotId) {
+    try {
         Tutor* tutor = NULL;
         for (int i = 0; i < tutors.size(); i++) {
             if (tutors[i].getName() == tutorName) {
@@ -430,10 +459,8 @@ public:
                 break;
             }
         }
-        if (tutor == NULL) {
-            cout << "  ERROR: Tutor \"" << tutorName << "\" not found.\n";
-            return;
-        }
+        if (tutor == NULL)
+            throw TutorNotFoundException(tutorName);
 
         Student* student = NULL;
         for (int i = 0; i < students.size(); i++) {
@@ -442,16 +469,12 @@ public:
                 break;
             }
         }
-        if (student == NULL) {
-            cout << "  ERROR: Student \"" << studentName << "\" not found.\n";
-            return;
-        }
+        if (student == NULL)
+            throw StudentNotFoundException(studentName);
 
         TimeSlot* slot = tutor->findSlot(slotId);
-        if (slot == NULL) {
-            cout << "  ERROR: Slot ID " << slotId << " not found.\n";
-            return;
-        }
+        if (slot == NULL)
+            throw SlotNotFoundException(slotId);
 
         string waitlistKey = tutorName + "_" + to_string(slotId);
 
@@ -471,9 +494,18 @@ public:
 
         cout << "  Session booked successfully!\n";
         newSession.displaySession();
+
+    } catch (TutorNotFoundException& e) {
+        cout << "  [EXCEPTION] " << e.what() << endl;
+    } catch (StudentNotFoundException& e) {
+        cout << "  [EXCEPTION] " << e.what() << endl;
+    } catch (SlotNotFoundException& e) {
+        cout << "  [EXCEPTION] " << e.what() << endl;
     }
+}
 
     void cancelSession(int sessionId) {
+    try {
         Session* sess = NULL;
         for (int i = 0; i < sessions.size(); i++) {
             if (sessions[i].getSessionId() == sessionId) {
@@ -481,14 +513,12 @@ public:
                 break;
             }
         }
-        if (sess == NULL) {
-            cout << "  ERROR: Session ID " << sessionId << " not found.\n";
-            return;
-        }
-        if (sess->getStatus() == "Cancelled") {
-            cout << "  Session is already cancelled.\n";
-            return;
-        }
+
+        if (sess == NULL)
+            throw runtime_error("Session ID not found: " + to_string(sessionId));
+
+        if (sess->getStatus() == "Cancelled")
+            throw runtime_error("Session already cancelled.");
 
         string tutorName = sess->getTutorName();
         string slotInfo  = sess->getSlotInfo();
@@ -504,38 +534,48 @@ public:
             }
         }
 
-        if (tutor != NULL) {
-            vector<TimeSlot>& slots = tutor->getAvailableSlots();
-            for (int i = 0; i < slots.size(); i++) {
-                string info = slots[i].getDate() + " " + slots[i].getTime();
-                if (info == slotInfo && slots[i].getIsBooked()) {
-                    slots[i].freeSlot();
+        if (tutor == NULL)
+            throw runtime_error("Tutor not found while cancelling.");
 
-                    string waitlistKey = tutorName + "_" + to_string(slots[i].getSlotId());
-                    if (!getWaitlist(waitlistKey).isEmpty()) {
-                        string nextStudent = getWaitlist(waitlistKey).getNextStudent();
-                        cout << "  Auto-assigning slot to waitlisted student: \"" << nextStudent << "\"\n";
-                        slots[i].bookSlot();
+        vector<TimeSlot>& slots = tutor->getAvailableSlots();
 
-                        Session newSession(nextSessionId, tutorName, nextStudent, subject, slotInfo);
-                        nextSessionId++;
-                        sessions.push_back(newSession);
+        for (int i = 0; i < slots.size(); i++) {
+            string info = slots[i].getDate() + " " + slots[i].getTime();
 
-                        for (int j = 0; j < students.size(); j++) {
-                            if (students[j].getName() == nextStudent) {
-                                students[j].addToHistory(newSession);
-                                break;
-                            }
+            if (info == slotInfo && slots[i].getIsBooked()) {
+                slots[i].freeSlot();
+
+                string waitlistKey = tutorName + "_" + to_string(slots[i].getSlotId());
+
+                if (!getWaitlist(waitlistKey).isEmpty()) {
+                    string nextStudent = getWaitlist(waitlistKey).getNextStudent();
+
+                    cout << "  Auto-assigning slot to waitlisted student: \"" << nextStudent << "\"\n";
+
+                    slots[i].bookSlot();
+
+                    Session newSession(nextSessionId, tutorName, nextStudent, subject, slotInfo);
+                    nextSessionId++;
+                    sessions.push_back(newSession);
+
+                    for (int j = 0; j < students.size(); j++) {
+                        if (students[j].getName() == nextStudent) {
+                            students[j].addToHistory(newSession);
+                            break;
                         }
-                        cout << "  New session created for \"" << nextStudent << "\":\n";
-                        newSession.displaySession();
                     }
-                    break;
+
+                    cout << "  New session created:\n";
+                    newSession.displaySession();
                 }
+                break;
             }
         }
-    }
 
+    } catch (exception& e) {
+        cout << "  [EXCEPTION] " << e.what() << endl;
+    }
+}
     void showAllSessions() {
         if (sessions.empty()) {
             cout << "  No sessions recorded.\n";
